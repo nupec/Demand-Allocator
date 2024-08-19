@@ -1,0 +1,6 @@
+geopandas
+geopy
+pandas
+fastapi
+unidecode
+uvicorn

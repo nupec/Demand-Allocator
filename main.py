@@ -1,100 +1,110 @@
-import geopandas as gpd 
-from geopy.distance import geodesic  
-import pandas as pd  
-from fastapi import FastAPI, Query  
-from typing import Optional  
-from unidecode import unidecode  
+import geopandas as gpd
+from geopy.distance import geodesic
+import pandas as pd
+from fastapi import FastAPI, Query, UploadFile, File
+from typing import Optional
+from unidecode import unidecode
 
-app = FastAPI()
+app = FastAPI(
+    title="UBS-Demand-Allocator",
+    description="API para alocação de demandas para UBSs com base em dados geográficos utilizando cálculos de distância geodésica.",
+    version="1.0.0"
+)
 
-# Função para calcular a distância geodésica entre dois pontos (em quilômetros)
+def inferir_coluna(gdf, possiveis_nomes):
+    for nome in possiveis_nomes:
+        colunas = [col for col in gdf.columns if unidecode(col).lower() == unidecode(nome).lower()]
+        if colunas:
+            return colunas[0]
+    return None
+
 def calcular_distancia_geodesica(ponto1, ponto2):
     return geodesic(ponto1, ponto2).kilometers
 
-# Função para alocar demandas (setores censitários) para a UBS mais próxima
-def alocar_demandas(demandas_gdf, ubs_gdf):
-    alocacao = []  
+def alocar_demandas(demandas_gdf, ubs_gdf, col_demanda_id, col_ubs_nome, col_ubs_municipio):
+    alocacao = []
 
     for i, demanda in enumerate(demandas_gdf.itertuples(), 1):
-        ponto_demanda = (demanda.geometry.y, demanda.geometry.x) 
-        menor_distancia = float('inf') 
-        ubs_mais_proxima = None  
+        ponto_demanda = (demanda.geometry.y, demanda.geometry.x)
+        menor_distancia = float('inf')
+        ubs_mais_proxima = None
 
-        print(f"Processando demanda {i}/{len(demandas_gdf)} - ID Setor: {demanda.CD_SETOR}")
-        print(f"Coordenadas da Demanda: {ponto_demanda}")
-
-        # Loop para comparar cada demanda com todas as UBSs
-        for j, ubs in enumerate(ubs_gdf.itertuples(), 1):
-            ponto_ubs = (ubs.geometry.y, ubs.geometry.x) 
-            distancia = calcular_distancia_geodesica(ponto_demanda, ponto_ubs)  
-            print(f"  Comparando com UBS {j}/{len(ubs_gdf)} - {ubs.NOME_UBS} em {ubs.MUNICÍPIO}: Distância = {distancia:.2f} km")
-
-            # Se a distância atual for menor que a menor já encontrada, atualiza as variáveis
+        for ubs in ubs_gdf.itertuples():
+            ponto_ubs = (ubs.geometry.y, ubs.geometry.x)
+            distancia = calcular_distancia_geodesica(ponto_demanda, ponto_ubs)
             if distancia < menor_distancia:
                 menor_distancia = distancia
                 ubs_mais_proxima = ubs
 
-        # Verifica se encontrou uma UBS mais próxima e armazena as informações
-        if ubs_mais_proxima:
-            ubs_mais_proxima_dict = ubs_mais_proxima._asdict()  
-            nome_ubs = ubs_mais_proxima_dict.get('NOME_UBS', None) 
-            municipio_ubs = ubs_mais_proxima_dict.get('MUNICÍPIO', None) 
-            print(f"  -> UBS mais próxima: {nome_ubs} em {municipio_ubs} com distância {menor_distancia:.2f} km")
-        else:
-            nome_ubs = None
-            municipio_ubs = None
-            print("  -> Nenhuma UBS encontrada")
-
         alocacao.append({
-            'ID_Setor': demanda.CD_SETOR,  
-            'UBS': nome_ubs,  
-            'Município_UBS': municipio_ubs,  
-            'Distância': menor_distancia 
+            'ID_Setor': getattr(demanda, col_demanda_id),
+            'UBS': getattr(ubs_mais_proxima, col_ubs_nome) if ubs_mais_proxima else None,
+            'Município_UBS': getattr(ubs_mais_proxima, col_ubs_municipio) if ubs_mais_proxima else None,
+            'Distância': menor_distancia
         })
 
-    return pd.DataFrame(alocacao)  
+    return pd.DataFrame(alocacao)
 
-# Endpoint da API para alocar demandas com base na UF e opcionalmente no município
-@app.get("/alocar_demandas/")
-def alocar_demandas_api(uf: str, municipio: Optional[str] = None):
-    print(f"Carregando UBSs do estado {uf}...")
-    ubs_gdf = gpd.read_file('UBS_BRASIL.geojson')
-    demandas_gdf = gpd.read_file('BR_Centroides_2022.geojson')
+@app.post("/alocar_demandas/")
+def alocar_demandas_api(
+    ubs_file: UploadFile = File(...),
+    demandas_file: UploadFile = File(...),
+    uf: str = Query(...),
+    municipio: Optional[str] = None
+):
+    ubs_gdf = gpd.read_file(ubs_file.file)
+    demandas_gdf = gpd.read_file(demandas_file.file)
 
-    # Verifica se as coordenadas estão no sistema EPSG:4326 
-    if ubs_gdf.crs.to_string() != 'EPSG:4326':
-        print("Convertendo coordenadas das UBSs para EPSG:4326...")
-        ubs_gdf = ubs_gdf.to_crs(epsg=4326)
+    # Verificar se as geometrias são polígonos e calcular os centróides se necessário
+    if ubs_gdf.geometry.geom_type.isin(['Polygon', 'MultiPolygon']).any():
+        print("Calculando centróides para as UBSs...")
+        ubs_gdf = ubs_gdf.to_crs(epsg=3857)  # Usar um CRS projetado para o cálculo dos centróides
+        ubs_gdf['geometry'] = ubs_gdf.centroid
+        ubs_gdf = ubs_gdf.to_crs(epsg=4326)  # Voltar para WGS84
 
-    if demandas_gdf.crs.to_string() != 'EPSG:4326':
-        print("Convertendo coordenadas das demandas para EPSG:4326...")
-        demandas_gdf = demandas_gdf.to_crs(epsg=4326)
+    if demandas_gdf.geometry.geom_type.isin(['Polygon', 'MultiPolygon']).any():
+        print("Calculando centróides para as demandas...")
+        demandas_gdf = demandas_gdf.to_crs(epsg=3857)  # Usar um CRS projetado para o cálculo dos centróides
+        demandas_gdf['geometry'] = demandas_gdf.centroid
+        demandas_gdf = demandas_gdf.to_crs(epsg=4326)  # Voltar para WGS84
 
-    # Filtrar as UBSs pela UF especificada
-    print(f"Filtrando UBSs pela UF {uf}...")
-    ubs_gdf = ubs_gdf[ubs_gdf['UF'] == uf]
-    
-    # Filtrar as UBSs pelo município, se fornecido
+    # Inferir os nomes das colunas relevantes para UBS e demandas
+    col_demanda_id = inferir_coluna(demandas_gdf, ['CD_SETOR', 'ID', 'SETOR'])
+    col_ubs_nome = inferir_coluna(ubs_gdf, ['NOME_UBS', 'NOME', 'NAME', 'UBS'])
+    col_ubs_municipio = inferir_coluna(ubs_gdf, ['MUNICÍPIO', 'MUNICIPIO', 'CIDADE', 'MUNICIPALITY', 'CITY', 'BOROUGH', 'COMMUNE', 'GEMEINDE', 'COMUNE'])
+    col_ubs_uf = inferir_coluna(ubs_gdf, ['NM_UF','UF', 'ST', 'State', 'Province', 'Territory', 'BL', 'Provincia', 'Prov', 'EDO', 'Estado', 'Canton', 'CT', 'Région', 'Dept', 'Regione', 'County', 'CNTY', 'UT', 'Oblast', 'OBL', 'Distrito', 'DSTR'])
+    col_demanda_uf = inferir_coluna(demandas_gdf, ['NM_UF','UF', 'ST', 'State', 'Province', 'Territory', 'BL', 'Provincia', 'Prov', 'EDO', 'Estado', 'Canton', 'CT', 'Région', 'Dept', 'Regione', 'County', 'CNTY', 'UT', 'Oblast', 'OBL', 'Distrito', 'DSTR'])
+
+    print(f"Coluna de UF na UBS: {col_ubs_uf}, Coluna de UF na Demanda: {col_demanda_uf}")
+
+    if not col_demanda_id or not col_ubs_nome or not col_ubs_municipio or not col_ubs_uf or not col_demanda_uf:
+        return {"error": "Não foi possível inferir todas as colunas necessárias. Verifique os dados de entrada."}
+
+    # Filtrar as UBSs pela UF
+    ubs_gdf = ubs_gdf[ubs_gdf[col_ubs_uf] == uf]
+    print(f"Número de UBSs após filtragem por UF '{uf}': {len(ubs_gdf)}")
+
+    # Filtrar as UBSs pelo município, se aplicável
     if municipio:
-        print(f"Filtrando UBSs pelo município {municipio}...")
-        municipio = unidecode(municipio.lower())  
-        ubs_gdf = ubs_gdf[ubs_gdf['MUNICÍPIO'].apply(lambda x: unidecode(x.lower())) == municipio]
+        municipio = unidecode(municipio.lower())
+        ubs_gdf = ubs_gdf[ubs_gdf[col_ubs_municipio].apply(lambda x: unidecode(x.lower())) == municipio]
+        print(f"Número de UBSs após filtragem por Município '{municipio}': {len(ubs_gdf)}")
 
-    # Filtrar as demandas pela UF especificada
-    print(f"Filtrando demandas pela UF {uf}...")
-    demandas_gdf = demandas_gdf[demandas_gdf['UF'] == uf]
-    
-    # Filtrar as demandas pelo município, se fornecido
+    # Filtrar as demandas pela UF
+    demandas_gdf = demandas_gdf[demandas_gdf[col_demanda_uf] == uf]
+    print(f"Número de demandas após filtragem por UF '{uf}': {len(demandas_gdf)}")
+
+    # Filtrar as demandas pelo município, se aplicável
     if municipio:
-        print(f"Filtrando demandas pelo município {municipio}...")
         demandas_gdf = demandas_gdf[demandas_gdf['NM_MUN'].apply(lambda x: unidecode(x.lower())) == municipio]
+        print(f"Número de demandas após filtragem por Município '{municipio}': {len(demandas_gdf)}")
 
     # Realizar a alocação das demandas
-    print("Iniciando a alocação das demandas...")
-    resultado_df = alocar_demandas(demandas_gdf, ubs_gdf)
+    resultado_df = alocar_demandas(demandas_gdf, ubs_gdf, col_demanda_id, col_ubs_nome, col_ubs_municipio)
 
+    # Converter o resultado para JSON
     return resultado_df.to_dict(orient='records')
 
 if __name__ == "__main__":
-    import uvicorn  
-    uvicorn.run(app, host="0.0.0.0", port=8000) 
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)

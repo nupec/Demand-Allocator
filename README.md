@@ -89,7 +89,7 @@ Demand-Allocator/
 │   └── utils/
 │       ├── utils.py
 │       ├── __init__.py
-|
+│
 ├── run.py
 ├── requirements.txt
 └── README.md

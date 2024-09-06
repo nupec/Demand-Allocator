@@ -1,57 +1,95 @@
-import pandas as pd
-import numpy as np
+from fastapi import FastAPI, Query, UploadFile, File
+from typing import Optional
+import geopandas as gpd
+from unidecode import unidecode
 
-from libpysal.weights import KNN,  knnW_from_array
-from app.utils.utils import calculate_geodesic_distance
+from app.config import settings
+from app.allocation.allocation import allocate_demands,  allocate_demands_knn
+from app.geoprocessing.geoprocessing import process_geometries
+from app.utils.utils import infer_column, calculate_geodesic_distance
 
-def allocate_demands(demands_gdf, establishments_gdf, col_demand_id, col_name, col_city):
-    allocation = []
+app = FastAPI(
+    title=settings.APP_TITLE,
+    description=settings.APP_DESCRIPTION,
+    version=settings.APP_VERSION,
+)
 
-    for i, demand in enumerate(demands_gdf.itertuples(), 1):
-        demand_point = (demand.geometry.y, demand.geometry.x)
-        shortest_distance = float('inf')
-        closest_establishment = None
+@app.post("/allocate_demands/")
+def allocate_demands_api(
+    establishments_file: UploadFile = File(...),
+    demands_file: UploadFile = File(...),
+    state: str = Query(...),
+    city: Optional[str] = None
+):
+    establishments_gdf = gpd.read_file(establishments_file.file)
+    demands_gdf = gpd.read_file(demands_file.file)
 
-        for establishment in establishments_gdf.itertuples():
-            establishment_point = (establishment.geometry.y, establishment.geometry.x)
-            distance = calculate_geodesic_distance(demand_point, establishment_point)
-            if distance < shortest_distance:
-                shortest_distance = distance
-                closest_establishment = establishment
+    establishments_gdf = process_geometries(establishments_gdf)
+    demands_gdf = process_geometries(demands_gdf)
 
-        allocation.append({
-            'Sector_ID': getattr(demand, col_demand_id),
-            'Establishment': getattr(closest_establishment, col_name) if closest_establishment else None,
-            'Establishment_City': getattr(closest_establishment, col_city) if closest_establishment else None,
-            'Distance': shortest_distance
-        })
+    col_demand_id = infer_column(demands_gdf, settings.DEMAND_ID_POSSIBLE_COLUMNS)
+    col_name = infer_column(establishments_gdf, settings.NAME_POSSIBLE_COLUMNS)
+    col_city = infer_column(establishments_gdf, settings.CITY_POSSIBLE_COLUMNS)
+    col_state_establishment = infer_column(establishments_gdf, settings.STATE_POSSIBLE_COLUMNS)
+    col_state_demand = infer_column(demands_gdf, settings.STATE_POSSIBLE_COLUMNS)
 
-    return pd.DataFrame(allocation)
+    if not col_demand_id or not col_name or not col_city or not col_state_establishment or not col_state_demand:
+        return {"error": "Could not infer all necessary columns. Please check the input data."}
 
-def allocate_demands_knn(demands_gdf, establishments_gdf, col_demand_id, col_name, col_city, k=1):
-    allocation = []
+    establishments_gdf = establishments_gdf[establishments_gdf[col_state_establishment] == state]
+    print(f"Number of establishments after filtering by state '{state}': {len(establishments_gdf)}")
 
-    demands_coords = np.array(list(zip(demands_gdf.geometry.x, demands_gdf.geometry.y)))
-    establishments_coords = np.array(list(zip(establishments_gdf.geometry.x, establishments_gdf.geometry.y)))
+    if city:
+        city = unidecode(city.lower())
+        establishments_gdf = establishments_gdf[establishments_gdf[col_city].apply(lambda x: unidecode(x.lower())) == city]
+        print(f"Number of establishments after filtering by city '{city}': {len(establishments_gdf)}")
 
-    knn = knnW_from_array(establishments_coords, k=k)
+    demands_gdf = demands_gdf[demands_gdf[col_state_demand] == state]
+    print(f"Number of demands after filtering by state '{state}': {len(demands_gdf)}")
+
+    if city:
+        demands_gdf = demands_gdf[demands_gdf['NM_MUN'].apply(lambda x: unidecode(x.lower())) == city]
+        print(f"Number of demands after filtering by city '{city}': {len(demands_gdf)}")
+
+    result_df = allocate_demands(demands_gdf, establishments_gdf, col_demand_id, col_name, col_city)
+
+    return result_df.to_dict(orient='records')
+
+
+@app.post("/allocate_demands_knn/")
+def allocate_demands_knn_api(
+    establishments_file: UploadFile = File(...),
+    demands_file: UploadFile = File(...),
+    state: str = Query(...),
+    city: Optional[str] = None,
+    k: int = Query(1)  
+):
+    establishments_gdf = gpd.read_file(establishments_file.file)
+    demands_gdf = gpd.read_file(demands_file.file)
+
+    establishments_gdf = process_geometries(establishments_gdf)
+    demands_gdf = process_geometries(demands_gdf)
+
+    col_demand_id = infer_column(demands_gdf, settings.DEMAND_ID_POSSIBLE_COLUMNS)
+    col_name = infer_column(establishments_gdf, settings.NAME_POSSIBLE_COLUMNS)
+    col_city = infer_column(establishments_gdf, settings.CITY_POSSIBLE_COLUMNS)
+    col_state_establishment = infer_column(establishments_gdf, settings.STATE_POSSIBLE_COLUMNS)
+    col_state_demand = infer_column(demands_gdf, settings.STATE_POSSIBLE_COLUMNS)
+
+    if not col_demand_id or not col_name or not col_city or not col_state_establishment or not col_state_demand:
+        return {"error": "Could not infer all necessary columns. Please check the input data."}
+
+    establishments_gdf = establishments_gdf[establishments_gdf[col_state_establishment] == state]
+
+    if city:
+        city = unidecode(city.lower())
+        establishments_gdf = establishments_gdf[establishments_gdf[col_city].apply(lambda x: unidecode(x.lower())) == city]
+
+    demands_gdf = demands_gdf[demands_gdf[col_state_demand] == state]
     
-    for i, demand in enumerate(demands_gdf.itertuples(), 1):
-        demand_coord = np.array([demand.geometry.x, demand.geometry.y])
-        
-        neighbors_idx = knn.neighbors[i]
-        closest_establishments = establishments_gdf.iloc[neighbors_idx]
-        
-        closest_establishment = closest_establishments.iloc[0] 
-        
-        allocation.append({
-            'Sector_ID': getattr(demand, col_demand_id),
-            'Establishment': getattr(closest_establishment, col_name),
-            'Establishment_City': getattr(closest_establishment, col_city),
-            'Distance': calculate_geodesic_distance(
-                (demand.geometry.y, demand.geometry.x), 
-                (closest_establishment.geometry.y, closest_establishment.geometry.x)
-            )
-        })
+    if city:
+        demands_gdf = demands_gdf[demands_gdf['NM_MUN'].apply(lambda x: unidecode(x.lower())) == city]
 
-    return pd.DataFrame(allocation)
+    result_df = allocate_demands_knn(demands_gdf, establishments_gdf, col_demand_id, col_name, col_city, k)
+
+    return result_df.to_dict(orient='records')

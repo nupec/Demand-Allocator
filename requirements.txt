@@ -4,3 +4,5 @@ pandas
 fastapi
 unidecode
 uvicorn
+libpysal
+python-multipart

@@ -4,7 +4,7 @@ from app.utils.utils import infer_column
 from unidecode import unidecode
 from app.config import settings
 
-def prepare_data(establishments_file, demands_file, state, city=None):
+def prepare_data(establishments_file, demands_file, state=None, city=None):
     establishments_gdf = gpd.read_file(establishments_file.file)
     demands_gdf = gpd.read_file(demands_file.file)
 
@@ -23,15 +23,16 @@ def prepare_data(establishments_file, demands_file, state, city=None):
     if not col_demand_id or not col_name or not col_city or not col_state_establishment or not col_state_demand:
         return {"error": "Could not infer all necessary columns. Please check the input data."}, None, None, None, None
 
-    # Filter establishments by state and city
-    establishments_gdf = establishments_gdf[establishments_gdf[col_state_establishment] == state]
+    # Filter establishments by state (if provided) and city
+    if state:
+        establishments_gdf = establishments_gdf[establishments_gdf[col_state_establishment] == state]
+        demands_gdf = demands_gdf[demands_gdf[col_state_demand] == state]
+    else:
+        print("No state provided, allocating demands to the entire region.")
+
     if city:
         city = unidecode(city.lower())
         establishments_gdf = establishments_gdf[establishments_gdf[col_city].apply(lambda x: unidecode(x.lower())) == city]
-
-    # Filter demands by state and city
-    demands_gdf = demands_gdf[demands_gdf[col_state_demand] == state]
-    if city:
         demands_gdf = demands_gdf[demands_gdf['NM_MUN'].apply(lambda x: unidecode(x.lower())) == city]
 
     return None, demands_gdf, establishments_gdf, col_demand_id, col_name, col_city

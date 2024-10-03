@@ -1,12 +1,13 @@
 # Demand-Allocator
 
-Welcome to the **Demand-Allocator** repository! This project provides a FastAPI-based application designed to allocate demands to different establishments based on geographic data using geodesic distance calculations.
+Welcome to the **Demand-Allocator** repository! This project provides a FastAPI-based application designed to allocate demands to different establishments based on geographic data using geodesic distance calculations and network analysis.
 
 ## Features
 
 - **Geodesic Distance Calculation**: Efficiently calculates the geodesic distance between demand points and establishments.
 - **Centroid Calculation**: Automatically calculates centroids for polygon geometries, ensuring accurate distance measurements when dealing with polygons or multipolygons.
-- **K-Nearest Neighbors (KNN) Allocation**: Supports demand allocation using KNN, with configurable `k` for either demands or establishments.
+- **K-Nearest Neighbors (KNN) Allocation**: Supports demand allocation using KNN, with configurable k for either demands or establishments.
+- **Network Distance Calculation**: Utilizes road networks to compute a more realistic distance matrix between demands and establishments.
 - **Flexible Configuration**: Easily configure which columns to use for demands and establishments through the `config.py` file.
 - **Modular Structure**: Organized into modules for easy maintenance, extensibility, and scalability.
 
@@ -15,7 +16,7 @@ Welcome to the **Demand-Allocator** repository! This project provides a FastAPI-
 ### Prerequisites
 
 - Python 3.8+
-- Pip (Python package installer)
+- Conda (environment manager)
 - Git (to clone the repository)
 
 ### Clone the Repository
@@ -25,41 +26,40 @@ git clone https://github.com/nupec/Demand-Allocator.git
 cd Demand-Allocator
 ```
 
-## Create a Virtual Environment
+## Create a Conda Virtual Environment
 
-### It's recommended to use a virtual environment to manage dependencies:
-
-```bash
-python3 -m venv venv
-```
-## Activate the Virtual Environment
-### On Linux/macOS:
+### It's recommended to use a conda environment to manage dependencies:
 
 ```bash
-source venv/bin/activate
+conda env create -f environment.yml
 ```
-## On Windows:
-```bash
-venv\Scripts\activate
-```
-## Install Dependencies
-
-### Install the required Python packages listed in requirements.txt:
+## Activate the Conda Environment:
+## On Linux/macOS and Windows:
 
 ```bash
-pip install -r requirements.txt
+conda activate demand-allocator
 ```
 
-### The requirements.txt file includes the following dependencies:
+## Environment Setup
+### The **environment.yml** file includes 
+name: demand-allocator
 
-- geopandas
-- geopy
-- pandas
-- fastapi
-- unidecode
-- uvicorn
-- libpysal
-- python-multipart
+channels:
+  - conda-forge
+
+dependencies:
+  - geopandas
+  - geopy
+  - pandas
+  - fastapi
+  - unidecode
+  - uvicorn
+  - libpysal
+  - python-multipart
+  - osmnx
+  - pandana
+  - numpy
+  - matplotlib
 
 
 ## Run the Application
@@ -68,14 +68,14 @@ pip install -r requirements.txt
 ```bash
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
-The application will be available at http://0.0.0.0:8000.
+The application will be available at http://0.0.0.0:8000/docs.
 
-### Deactivate the Virtual Environment
+### Deactivate the Conda Environment
 
-When you're done working, you can deactivate the virtual environment:
+When you're done working, you can deactivate the environment:
 ## On Linux/macOS and Windows:
 ```bash
-deactivate
+conda deactivate
 ```
 
 ## Project Structure
@@ -90,17 +90,21 @@ Demand-Allocator/
 │   ├── geoprocessing/
 │   │   ├── geoprocessing.py     # Handles centroid and geometry processing
 │   │   └── __init__.py
+│   ├── network_analysis/
+│   │   ├── __init__.py          # Imports compute_distance_matrix from network.py
+│   │   └── network.py            # Functions for computing distance matrix and network analysis
 │   ├── main.py                  # The entry point where FastAPI is initialized
 │   ├── routes/
 │   │   ├── allocation_route.py  # API route for demand allocation using geodesic distance
+│   │   ├── distance_matrix_route.py # API route for computing distance matrices
 │   │   ├── knn_route.py         # API route for demand allocation using KNN
 │   │   └── __init__.py
 │   └── utils/
-│       ├── utils.py             # Utility functions for geodesic calculations and column inference
 │       ├── __init__.py
+│       └── utils.py             # Utility functions for geodesic calculations and column inference
+├── environment.yml              # Conda environment configuration
 ├── LICENSE
 ├── README.md                    # Documentation for setting up and running the project
-├── requirements.txt             # Dependencies required for the project
 └── run.py                       # Script to run the application
 ```
 - app/main.py: The entry point of the application where the FastAPI server is initialized.
@@ -112,6 +116,10 @@ Demand-Allocator/
 - app/allocation/common.py: Prepares the data for allocation, handling centroids and filtering data based on state and city.
 
 - app/geoprocessing/geoprocessing.py: Handles geometric data processing, including the calculation of centroids for polygon geometries.
+
+- app/network_analysis/network.py: Contains logic for calculating a distance matrix using road network data, with Pandana and OSMnx.
+
+- app/routes/distance_matrix_route.py: API endpoint for calculating a distance matrix between demands and establishments using network analysis.
 
 - app/routes/allocation_route.py: API endpoint for allocating demands to establishments based on geodesic distance.
 

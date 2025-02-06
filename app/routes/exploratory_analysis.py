@@ -1,46 +1,34 @@
-from fastapi import APIRouter, File, UploadFile, HTTPException
-from typing import List
-import os
+from fastapi import APIRouter, UploadFile, File, Query, HTTPException
+from app.analysis.socioeconomic_analys import validate_file_format
 
 router = APIRouter()
 
-
-# Extension aceppted 
-file_supported_geo = {'.geojson', '.shp'}
-file_supported_demand = {'.geojson', '.shp', '.csv'}
-
-
-def validate_file_extension(filename: str, supported_extensions: set) -> bool:
-    """Validates that the file has a supported extension."""
-    _, ext = os.path.splitext(filename)  
-    return ext.lower() in supported_extensions
-
-
-@router.post("/exploratory_analysis")
-def analyste_socio_spatial(
-    geo_mesh: UploadFile = File(...),
-    demands: UploadFile = File(...)
+@router.post("/api/validate-file")
+async def validate_file(
+    file: UploadFile = File(...),
+    column_name: str = Query(None, description="Nome da coluna a ser validada (opcional)")
 ):
-    
-# Validation of the geographic mesh
-    if not validate_file_extension(geo_mesh.filename,file_supported_geo):
-        raise HTTPException(
-            status_code=400,
-            detail=f"Arquivo de malha geográfica '{geo_mesh.filename}' não suportado. "
-                   f"Extensões válidas: {', '.join(file_supported_geo)}."
-        )
-    
-# Validation of socioeconomic data
-    if not validate_file_extension(demands.filename,file_supported_demand):
-        raise HTTPException(
-            status_code=400,
-            detail=f"Arquivo de dados socieconomicos '{demands.filename}' não suportado. "
-                   f"Extensões válidas: {', '.join(file_supported_demand)}."
-        )
-    
-    return{
-        "message": "Arquivos válidos.",
-        "geographic_mesh": geo_mesh.filename,
-        "socioeconomic_data": demands.filename
-    }
+    """
+    Verifica se o arquivo enviado está no formato correto (GeoDataFrame ou Shapefile),
+    retorna os nomes das colunas do DataFrame e verifica se uma coluna específica existe.
+    """
+    try:
+        result = await validate_file_format(file, column_name)
+        response = {
+            "message": "Arquivo válido!",
+            "format": result["format"],
+            "columns": result["columns"]
+        }
 
+        if column_name:
+            response["column_exists"] = result["column_exists"]
+            response["column_checked"] = column_name
+            if not result["column_exists"]:
+                raise HTTPException(status_code=400, detail=f"A coluna '{column_name}' não existe no arquivo.")
+
+        return response
+
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Erro ao processar o arquivo: {e}")

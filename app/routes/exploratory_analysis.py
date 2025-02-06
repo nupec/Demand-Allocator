@@ -1,5 +1,7 @@
 from fastapi import APIRouter, UploadFile, File, Query, HTTPException
-from app.analysis.socioeconomic_analys import validate_file_format
+from fastapi.responses import JSONResponse
+from app.analysis.socioeconomic_analys import validate_file_format  # Importa a função de validação
+import json
 
 router = APIRouter()
 
@@ -10,23 +12,28 @@ async def validate_file(
 ):
     """
     Verifica se o arquivo enviado está no formato correto (GeoDataFrame ou Shapefile),
-    retorna os nomes das colunas do DataFrame e verifica se uma coluna específica existe.
+    retorna os nomes das colunas do DataFrame, verifica se uma coluna específica existe e extrai os centroides.
     """
     try:
+        # Valida o arquivo e extrai os centroides
         result = await validate_file_format(file, column_name)
+        
+        # Cria o dicionário de resposta com as informações gerais
         response = {
             "message": "Arquivo válido!",
             "format": result["format"],
-            "columns": result["columns"]
+            "columns": result["columns"],
         }
 
-        if column_name:
-            response["column_exists"] = result["column_exists"]
-            response["column_checked"] = column_name
-            if not result["column_exists"]:
-                raise HTTPException(status_code=400, detail=f"A coluna '{column_name}' não existe no arquivo.")
+        # Adiciona os centroides ao arquivo JSON para retorno
+        centroid_data = {"centroids": result["centroids"]}
 
-        return response
+        # Retorna os centroides como um arquivo JSON
+        return JSONResponse(
+            content=centroid_data,
+            media_type="application/json",
+            headers={"Content-Disposition": "attachment; filename=centroids.json"}
+        )
 
     except HTTPException as e:
         raise e

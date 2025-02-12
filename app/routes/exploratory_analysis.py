@@ -1,7 +1,10 @@
 from fastapi import APIRouter, UploadFile, File, Query, HTTPException
-from fastapi.responses import JSONResponse
-from app.analysis.socioeconomic_analys import validate_file_format 
+from fastapi.responses import StreamingResponse
+from app.analysis.socioeconomic_analys import validate_file_format, plot_centroids
 import json
+import os
+from io import BytesIO
+import zipfile
 
 router = APIRouter()
 
@@ -23,32 +26,35 @@ async def validate_file(
 
         # Se o valor para filtrar for fornecido, realiza a filtragem
         if value:
-            # Verifica se a coluna "municipio" existe
             if "MUNICÍPIO" in result["columns"]:
-                # Filtra os dados com base no valor fornecido
                 filtered_gdf = gdf[gdf["MUNICÍPIO"] == value]  
-
-                # Verifica se há dados para o valor filtrado
                 if filtered_gdf.empty:
                     raise HTTPException(status_code=404, detail=f"Nenhum dado encontrado para o município '{value}'.")
-
-                # Extração dos centroides para os dados filtrados
+                # Filtra os centroides apenas para o município
                 centroids_filtered = filtered_gdf.geometry.centroid.apply(lambda geom: (geom.x, geom.y)).tolist()
-                
-                # Adiciona os centroides filtrados ao retorno
                 centroid_data = {"centroids": centroids_filtered}
-            else:
-                raise HTTPException(status_code=400, detail="A coluna 'municipio' não foi encontrada no arquivo.")
-        else:
-            # Caso não haja filtro, retorna todos os centroides
-            centroid_data = {"centroids": result["centroids"]}
 
-        # Retorna os centroides como um arquivo JSON
-        return JSONResponse(
-            content=centroid_data,
-            media_type="application/json",
-            headers={"Content-Disposition": "attachment; filename=centroids.json"}
-        )
+                # Plota os centroides apenas do município filtrado
+                plot_path = plot_centroids(filtered_gdf)
+            else:
+                raise HTTPException(status_code=400, detail="A coluna 'MUNICÍPIO' não foi encontrada no arquivo.")
+        else:
+            centroid_data = {"centroids": result["centroids"]}
+            plot_path = result.get("plot")
+
+        # Salva os centroides em um arquivo JSON
+        json_path = "centroids.json"
+        with open(json_path, "w") as json_file:
+            json.dump(centroid_data, json_file)
+
+        # Gera o gráfico e obtém o caminho da imagem
+        zip_buffer = BytesIO()
+        with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zipf:
+            zipf.write(json_path, "centroids.json")
+            zipf.write(plot_path, "centroids_plot.png")
+        zip_buffer.seek(0)
+
+        return StreamingResponse(zip_buffer, media_type="application/zip", headers={"Content-Disposition": "attachment; filename=centroids_files.zip"})
 
     except HTTPException as e:
         raise e

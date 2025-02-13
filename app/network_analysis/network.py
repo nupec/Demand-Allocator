@@ -17,6 +17,7 @@ def compute_distance_matrix(demands_gdf, ubs_gdf, city_name=None, max_distance=5
     demands_gdf = demands_gdf.to_crs(epsg=4326)
     ubs_gdf = ubs_gdf.to_crs(epsg=4326)
 
+
     # Filter by city if provided
     if city_name:
         demands_gdf = demands_gdf[demands_gdf['NM_MUN'].str.upper() == city_name.upper()]

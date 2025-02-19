@@ -126,3 +126,17 @@ Demand-Allocator/
 - app/routes/knn_route.py: API endpoint for allocating demands to establishments using the KNN algorithm.
 
 - app/utils/utils.py: Utility functions, such as column name inference and geodesic distance calculation.
+
+
+## Test Data
+
+To facilitate testing and validation of the Demand-Allocator system, we provide sample GeoJSON files in a structured format. These files represent synthetic demand points and establishment locations in different configurations.
+Sample Files Structure
+
+
+```bash
+Test/
+├── 10x10_RL_demands.geojson         # 10x10 grid of demand points (Rio Largo example)
+├── 10x10_RL_establishments.geojson  # Corresponding establishments for Rio Largo
+├── 5x5_AM_demands.geojson           # 5x5 grid of demand points (Amazonas example)
+└── 5x5_AM_establishments.geojson    # Corresponding establishments for Amazonas

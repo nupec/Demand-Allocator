@@ -1,6 +1,6 @@
 class Settings:
     APP_TITLE = "Demand-Allocator"
-    APP_DESCRIPTION = "API for allocating demands to different establishments based on geographic data using geodesic distance calculations."
+    APP_DESCRIPTION = "API to allocate demands to different opportunities based on geographic data using geodesic distance and real distance calculations."
     APP_VERSION = "1.0.0"
 
     DEMAND_ID_POSSIBLE_COLUMNS = [
@@ -9,7 +9,7 @@ class Settings:
         'BARRIO_ID', 'BARRIO_CODE', 'NEIGHBORHOOD_ID', 'NEIGHBORHOOD_CODE',
         'QUARTIER_ID', 'QUARTIER_CODE', 'KIEZ', 'VIERTEL', 'BAIRRO', 
         'LOCALIDAD', 'QUARTIERE', 'COLONIA', 'KRAJ', 'RIONE', 'ARRONDISSEMENT',
-        'SUBDIVISION', 'SEKTOR', 'SCT'
+        'SUBDIVISION', 'SEKTOR', 'SCT', 'CD_BAIRRO', 'NM_BAIRRO'  
     ]
 
     NAME_POSSIBLE_COLUMNS = [

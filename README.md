@@ -78,56 +78,6 @@ When you're done working, you can deactivate the environment:
 conda deactivate
 ```
 
-## Project Structure
-```bash
-Demand-Allocator/
-├── app/
-│   ├── allocation/
-│   │   ├── allocation.py        # Logic for demand allocation using geodesic distance and KNN
-│   │   ├── common.py            # Shared logic for preparing the data for allocation
-│   │   └── __init__.py
-│   ├── config.py                # Application configuration and settings
-│   ├── geoprocessing/
-│   │   ├── geoprocessing.py     # Handles centroid and geometry processing
-│   │   └── __init__.py
-│   ├── network_analysis/
-│   │   ├── __init__.py          # Imports compute_distance_matrix from network.py
-│   │   └── network.py            # Functions for computing distance matrix and network analysis
-│   ├── main.py                  # The entry point where FastAPI is initialized
-│   ├── routes/
-│   │   ├── allocation_route.py  # API route for demand allocation using geodesic distance
-│   │   ├── distance_matrix_route.py # API route for computing distance matrices
-│   │   ├── knn_route.py         # API route for demand allocation using KNN
-│   │   └── __init__.py
-│   └── utils/
-│       ├── __init__.py
-│       └── utils.py             # Utility functions for geodesic calculations and column inference
-├── environment.yml              # Conda environment configuration
-├── LICENSE
-├── README.md                    # Documentation for setting up and running the project
-└── run.py                       # Script to run the application
-```
-- app/main.py: The entry point of the application where the FastAPI server is initialized.
-
-- app/config.py: Contains the application settings, including possible columns for demands and establishments.
-
-- app/allocation/allocation.py: Contains the logic for allocating demands to the nearest establishment using both geodesic distance and KNN.
-
-- app/allocation/common.py: Prepares the data for allocation, handling centroids and filtering data based on state and city.
-
-- app/geoprocessing/geoprocessing.py: Handles geometric data processing, including the calculation of centroids for polygon geometries.
-
-- app/network_analysis/network.py: Contains logic for calculating a distance matrix using road network data, with Pandana and OSMnx.
-
-- app/routes/distance_matrix_route.py: API endpoint for calculating a distance matrix between demands and establishments using network analysis.
-
-- app/routes/allocation_route.py: API endpoint for allocating demands to establishments based on geodesic distance.
-
-- app/routes/knn_route.py: API endpoint for allocating demands to establishments using the KNN algorithm.
-
-- app/utils/utils.py: Utility functions, such as column name inference and geodesic distance calculation.
-
-
 ## Test Data
 
 To facilitate testing and validation of the Demand-Allocator system, we provide sample GeoJSON files in a structured format. These files represent synthetic demand points and establishment locations in different configurations.

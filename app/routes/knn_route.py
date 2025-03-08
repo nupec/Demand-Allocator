@@ -26,8 +26,8 @@ class OutputFormatEnum(str, Enum):
 def allocate_demands_knn_api(
     opportunities_file: UploadFile,
     demands_file: UploadFile,
-    state: Optional[str] = Query(None, description="State (optional)"),
-    city: Optional[str] = None,
+    state: str = Query("", description="State (optional)"),
+    city: str = Query("", description="City (optional)"),
     k: int = Query(1, description="Number of neighbors for KNN"),
     # Step 2: Use the Enum for method selection
     method: MethodEnum = Query(MethodEnum.pandana_real_distance, description="Choose the allocation method"),

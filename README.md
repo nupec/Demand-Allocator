@@ -85,8 +85,9 @@ Sample Files Structure
 
 
 ```bash
-Test/
-├── 10x10_RL_demands.geojson         # 10x10 grid of demand points (Rio Largo example)
-├── 10x10_RL_establishments.geojson  # Corresponding establishments for Rio Largo
-├── 5x5_AM_demands.geojson           # 5x5 grid of demand points (Amazonas example)
-└── 5x5_AM_establishments.geojson    # Corresponding establishments for Amazonas
+test/
+    ├── 10x10_rj_demands.geojson
+    ├── 10x10_rj_opportunities.geojson
+    ├── 5x5_am_demands.geojson
+    └── 5x5_am_opportunities.geojson
+

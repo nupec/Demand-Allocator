@@ -22,7 +22,6 @@ def allocate_demands_knn(
     - k: number of neighbors
     - city_name and num_threads (optional for pandana)
     """
-
     if method == "geodesic":
         # Step 1: Obtain the geodesic distance matrix
         dist_df = geodesic_distance_matrix(demands_gdf, opportunities_gdf, col_demand_id, col_name)
@@ -45,7 +44,11 @@ def allocate_demands_knn(
     # Step 3: Join with geometry data (lat/lon) and return the result
     result_df = join_knn_with_geometries(knn_df, demands_gdf, opportunities_gdf, col_demand_id, col_name)
 
-    # Note: Here, 'result_df' will have 'k' rows for each demand (unless 'k' exceeds 
-    # the number of available opportunities).
-    # If you want to return ONLY the 1st neighbor, simply set k=1 or filter at the end.
+    # Calculations are aggregated by opportunity_name
+    stats = result_df.groupby('opportunity_name')['distance_km'].agg(
+        distance_mean='mean',
+        distance_variance=lambda x: x.var(ddof=0)
+    ).reset_index()
+    result_df = result_df.merge(stats, on='opportunity_name', how='left')
+
     return result_df

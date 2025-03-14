@@ -95,7 +95,8 @@ docker run -d -p 8000:8000 demand-allocator
 ### 3. Test the API in Docker
 
 Access the API at http://localhost:8000.
-Test Data
+
+## Test Data
 
 ### To facilitate testing and validation of the Demand-Allocator system, we provide sample GeoJSON files in a structured format. These files represent synthetic demand points and establishment locations in different configurations.
 Sample Files Structure

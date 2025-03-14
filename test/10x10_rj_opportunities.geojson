@@ -1,0 +1,15 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    { "type": "Feature", "properties": { "NOME": "Estabelecimento A", "NM_UF": "RJ", "MUNICÍPIO": "Rio de Janeiro" }, "geometry": { "type": "Point", "coordinates": [ -43.2100, -22.9005 ] } },
+    { "type": "Feature", "properties": { "NOME": "Estabelecimento B", "NM_UF": "RJ", "MUNICÍPIO": "Rio de Janeiro" }, "geometry": { "type": "Point", "coordinates": [ -43.2250, -22.9150 ] } },
+    { "type": "Feature", "properties": { "NOME": "Estabelecimento C", "NM_UF": "RJ", "MUNICÍPIO": "Rio de Janeiro" }, "geometry": { "type": "Point", "coordinates": [ -43.2205, -22.9050 ] } },
+    { "type": "Feature", "properties": { "NOME": "Estabelecimento D", "NM_UF": "RJ", "MUNICÍPIO": "Rio de Janeiro" }, "geometry": { "type": "Point", "coordinates": [ -43.2305, -22.9255 ] } },
+    { "type": "Feature", "properties": { "NOME": "Estabelecimento E", "NM_UF": "RJ", "MUNICÍPIO": "Rio de Janeiro" }, "geometry": { "type": "Point", "coordinates": [ -43.2150, -22.9100 ] } },
+    { "type": "Feature", "properties": { "NOME": "Estabelecimento F", "NM_UF": "RJ", "MUNICÍPIO": "Rio de Janeiro" }, "geometry": { "type": "Point", "coordinates": [ -43.2350, -22.9200 ] } },
+    { "type": "Feature", "properties": { "NOME": "Estabelecimento G", "NM_UF": "RJ", "MUNICÍPIO": "Rio de Janeiro" }, "geometry": { "type": "Point", "coordinates": [ -43.2280, -22.9105 ] } },
+    { "type": "Feature", "properties": { "NOME": "Estabelecimento H", "NM_UF": "RJ", "MUNICÍPIO": "Rio de Janeiro" }, "geometry": { "type": "Point", "coordinates": [ -43.2400, -22.9350 ] } },
+    { "type": "Feature", "properties": { "NOME": "Estabelecimento I", "NM_UF": "RJ", "MUNICÍPIO": "Rio de Janeiro" }, "geometry": { "type": "Point", "coordinates": [ -43.2320, -22.9170 ] } },
+    { "type": "Feature", "properties": { "NOME": "Estabelecimento J", "NM_UF": "RJ", "MUNICÍPIO": "Rio de Janeiro" }, "geometry": { "type": "Point", "coordinates": [ -43.2455, -22.9205 ] } }
+  ]
+}

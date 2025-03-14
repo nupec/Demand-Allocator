@@ -23,10 +23,8 @@ def allocate_demands_knn(
     - city_name and num_threads (optional for pandana)
     """
     if method == "geodesic":
-        # Step 1: Obtain the geodesic distance matrix
         dist_df = geodesic_distance_matrix(demands_gdf, opportunities_gdf, col_demand_id, col_name)
     elif method == "pandana_real_distance":
-        # Step 1: Obtain the distance matrix using pandana
         dist_df = pandana_distance_matrix(
             demands_gdf,
             opportunities_gdf,
@@ -38,10 +36,10 @@ def allocate_demands_knn(
     else:
         raise HTTPException(status_code=400, detail="Invalid method. Use 'geodesic' or 'pandana_real_distance'.")
 
-    # Step 2: Select the K nearest neighbors
+    # Select the K nearest neighbors
     knn_df = select_knn_from_distance_matrix(dist_df, k=k)
 
-    # Step 3: Join with geometry data (lat/lon) and return the result
+    # Join with geometry data (lat/lon) and return the result
     result_df = join_knn_with_geometries(knn_df, demands_gdf, opportunities_gdf, col_demand_id, col_name)
 
     # Calculations are aggregated by opportunity_name

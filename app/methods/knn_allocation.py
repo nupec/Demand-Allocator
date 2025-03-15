@@ -1,29 +1,21 @@
+import logging
 import pandas as pd
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 def select_knn_from_distance_matrix(
     distance_df: pd.DataFrame,
     k: int = 1
 ) -> pd.DataFrame:
     """
-    Receives a DataFrame 'distance_df' where:
-        - index = IDs (demands)
-        - columns = names (opportunities)
-        - values = distance
-    Returns a long-format DataFrame with the K nearest opportunities for each demand,
-    sorted by distance.
-    
-    The returned columns are, for example:
-      demand_id | opportunity_name | distance_km
+    Convert a wide distance_df into a long table with top-k neighbors per row.
     """
-    # For each row (demand), sort the columns by distance
+    logger.info("select_knn_from_distance_matrix: extracting top %d neighbors per demand.", k)
     results = []
     for demand_id, row in distance_df.iterrows():
-        # Remove NaN values to avoid issues during sorting
         row_no_nan = row.dropna().sort_values()
-        # Select the K nearest opportunities
         top_k = row_no_nan.iloc[:k]
-        # Create a temporary DataFrame for each demand
         temp_df = pd.DataFrame({
             'demand_id': demand_id,
             'opportunity_name': top_k.index,
@@ -31,8 +23,8 @@ def select_knn_from_distance_matrix(
         })
         results.append(temp_df)
 
-    # Concatenate all temporary DataFrames
     knn_df = pd.concat(results, ignore_index=True)
+    logger.debug("select_knn_from_distance_matrix: final knn_df has %d rows.", len(knn_df))
     return knn_df
 
 
@@ -44,30 +36,27 @@ def join_knn_with_geometries(
     col_name
 ) -> pd.DataFrame:
     """
-    Joins the knn_df (which contains demand_id and opportunity_name)
-    to add columns with the origin and destination latitude/longitude.
+    Add lat/lon columns for demand and opportunity to the KNN result.
     """
-    # Map demand_id to (lat, lon)
+    logger.info("join_knn_with_geometries: mapping lat/lon from demands and opportunities.")
     demands_map = {}
     for i, row in demands_gdf.iterrows():
         d_id = row[col_demand_id]
         demands_map[d_id] = (row.geometry.y, row.geometry.x)
 
-    # Map opportunity_name to (lat, lon)
     opp_map = {}
     for i, row in opportunities_gdf.iterrows():
-        opp_name = str(row[col_name])  # convert to string
+        opp_name = str(row[col_name])
         opp_map[opp_name] = (row.geometry.y, row.geometry.x)
 
-    # Iterate over knn_df and create the lat/lon columns
     lat_origin = []
     lon_origin = []
     lat_dest = []
     lon_dest = []
 
-    for idx, row in knn_df.iterrows():
-        d_id = row['demand_id']
-        o_name = row['opportunity_name']
+    for idx, row_item in knn_df.iterrows():
+        d_id = row_item['demand_id']
+        o_name = row_item['opportunity_name']
 
         if d_id in demands_map:
             lat_o, lon_o = demands_map[d_id]
@@ -89,4 +78,5 @@ def join_knn_with_geometries(
     knn_df['Destination_Lat'] = lat_dest
     knn_df['Destination_Lon'] = lon_dest
 
+    logger.info("join_knn_with_geometries: appended geometry columns to knn DataFrame.")
     return knn_df

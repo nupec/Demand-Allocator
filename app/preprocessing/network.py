@@ -29,6 +29,7 @@ def get_cache_key(city_name, polygon):
     """
     Generate a unique cache key based on the city name and the area's bounding box.
     """
+    logger.debug("Generating cache key for city='%s' with polygon bounds=%s", city_name, polygon.bounds)
     key_str = city_name.lower() + str(polygon.bounds)
     return hashlib.sha1(key_str.encode()).hexdigest()
 
@@ -39,6 +40,7 @@ def load_network_from_cache(cache_key):
     Returns the graph if found, otherwise returns None.
     """
     cache_file = os.path.join(CACHE_DIR, f"{cache_key}.json")
+    logger.info("Attempting to load network from cache: %s", cache_file)
     if os.path.exists(cache_file):
         try:
             with open(cache_file, "r") as f:
@@ -51,10 +53,10 @@ def load_network_from_cache(cache_key):
                 if "geometry" in edge and isinstance(edge["geometry"], str):
                     edge["geometry"] = wkt.loads(edge["geometry"])
             graph = nx.node_link_graph(data)
-            logger.info("Network loaded from cache.")
+            logger.info("Network successfully loaded from cache.")
             return graph
         except Exception as e:
-            logger.error(f"Error loading network from cache: {e}")
+            logger.info("Cache file not found: %s", cache_file)
     return None
 
 def save_network_to_cache(graph, cache_key):
@@ -62,6 +64,7 @@ def save_network_to_cache(graph, cache_key):
     Convert geometry attributes to WKT and save the network graph to cache.
     """
     cache_file = os.path.join(CACHE_DIR, f"{cache_key}.json")
+    logger.info("Saving network to cache: %s", cache_file)
     try:
         data = nx.node_link_data(graph)
         # Convert geometry to WKT for nodes
@@ -74,7 +77,7 @@ def save_network_to_cache(graph, cache_key):
                 edge["geometry"] = edge["geometry"].wkt
         with open(cache_file, "w") as f:
             json.dump(data, f)
-        logger.info("Network saved to cache.")
+        logger.info("Network saved to cache under key=%s", cache_key)
     except Exception as e:
         logger.error(f"Error saving network to cache: {e}")
 
@@ -85,6 +88,9 @@ def compute_distance_matrix(demands_gdf, ubs_gdf, city_name=None, max_distance=5
     3. If the download fails, the buffer is increased and retried until 'max_attempts' is reached.
     4. Timeout is set to 2500s (~41 minutes).
     """
+    logger.info("Starting compute_distance_matrix with city_name='%s', max_distance=%d, num_threads=%d",
+                city_name, max_distance, num_threads)
+    
 
     # Set timeout (applies to all attempts)
     ox.settings.timeout = 2500
@@ -94,7 +100,8 @@ def compute_distance_matrix(demands_gdf, ubs_gdf, city_name=None, max_distance=5
         "https://overpass.kumi.systems/api/interpreter",
         "https://overpass-api.de/api/interpreter"
     ]
-
+    
+    logger.debug("Reprojecting demands_gdf and ubs_gdf to EPSG:4326")
     demands_gdf = demands_gdf.reset_index(drop=True)
     ubs_gdf = ubs_gdf.reset_index(drop=True)
 
@@ -102,6 +109,7 @@ def compute_distance_matrix(demands_gdf, ubs_gdf, city_name=None, max_distance=5
     ubs_gdf = ubs_gdf.to_crs(epsg=4326)
 
     if city_name:
+        logger.info("Filtering demands and opportunities by city_name='%s' (case-insensitive).", city_name)
         demands_gdf = demands_gdf[demands_gdf['NM_MUN'].str.upper() == city_name.upper()]
         ubs_gdf = ubs_gdf[ubs_gdf['MUNICÍPIO'].str.upper() == city_name.upper()]
 
@@ -121,6 +129,7 @@ def compute_distance_matrix(demands_gdf, ubs_gdf, city_name=None, max_distance=5
 
     # If not found in cache, attempt to download the network.
     if graph is None:
+        logger.info("Graph not found in cache. Attempting download from Overpass.")
         while attempt < max_attempts:
             area_of_interest = combined_geom.buffer(buffer_size)
 
@@ -129,27 +138,20 @@ def compute_distance_matrix(demands_gdf, ubs_gdf, city_name=None, max_distance=5
             for endpoint in endpoints:
                 try:
                     ox.settings.overpass_endpoint = endpoint
-
-                    logger.info(
-                        f"Attempt {attempt+1} - Endpoint: {endpoint} (Buffer of {buffer_size} degrees)"
-                    )
-
+                    logger.info("Attempt %d - Overpass endpoint: %s (buffer=%.3f)", attempt+1, endpoint, buffer_size)
                     graph = ox.graph_from_polygon(
                         area_of_interest,
                         network_type='drive',
                         simplify=True
                     )
-                    # If successful, break out of the endpoints loop.
                     break
 
                 except Exception as e:
-                    logger.warning(
-                        f"Failed to download network from {endpoint}: {e}. Trying next endpoint..."
-                    )
+                    logger.warning("Failed to download network from %s: %s", endpoint, e)
 
             # If graph is still None, increase the buffer and try again.
             if graph is None:
-                logger.error("Failed on all endpoints for this attempt.")
+                logger.error("Failed on all endpoints for attempt %d. Increasing buffer size.", attempt+1)
                 buffer_size = min(buffer_size * 1.5, 1.0)
                 attempt += 1
                 continue
@@ -160,13 +162,17 @@ def compute_distance_matrix(demands_gdf, ubs_gdf, city_name=None, max_distance=5
 
         # If city_name is provided and the network was downloaded (not from cache), save it to cache.
         if city_name and graph is not None:
+            logger.info("Saving newly downloaded graph to cache for city='%s'", city_name)
             save_network_to_cache(graph, cache_key)
 
     # If after max_attempts the network could not be obtained, raise an error.
     if attempt == max_attempts and (graph is None):
+        logger.error("Unable to obtain the network or map the points after %d attempts.", max_attempts)
         raise RuntimeError("Unable to obtain the network or map the points after several attempts.")
 
+    
     # Convert the graph into GeoDataFrames.
+    logger.info("Converting graph to GeoDataFrames.")
     nodes, edges = ox.graph_to_gdfs(graph, nodes=True, edges=True)
     nodes = nodes.reset_index()
     edges = edges.reset_index()
@@ -191,6 +197,7 @@ def compute_distance_matrix(demands_gdf, ubs_gdf, city_name=None, max_distance=5
     )
 
     # Extract coordinates.
+    logger.debug("Locating nearest nodes for demand and opportunity points.")
     demand_coords = np.array(list(zip(demands_gdf['geometry'].x, demands_gdf['geometry'].y)))
     ubs_coords = np.array(list(zip(ubs_gdf['geometry'].x, ubs_gdf['geometry'].y)))
 
@@ -204,10 +211,11 @@ def compute_distance_matrix(demands_gdf, ubs_gdf, city_name=None, max_distance=5
     # If points fall outside the network, increase the buffer and try again.
     if len(invalid_demand_nodes) > 0 or len(invalid_ubs_nodes) > 0:
         logger.warning(
-            f"{len(invalid_demand_nodes)} demand points and {len(invalid_ubs_nodes)} opportunity points are outside the network."
+            "%d demand points and %d opportunity points are outside the network.",
+            len(invalid_demand_nodes), len(invalid_ubs_nodes)
         )
         buffer_size = min(buffer_size * 1.5, 1.0)
-        logger.info(f"Increasing buffer to {buffer_size} degrees and rebuilding the network...")
+        logger.info("Increasing buffer to %.3f degrees. (Implementation note: not fully retried here.)", buffer_size)
         attempt += 1
         # Note: In this implementation, if there are invalid points even after cache/download,
         # the downloaded network will be used.
@@ -216,11 +224,13 @@ def compute_distance_matrix(demands_gdf, ubs_gdf, city_name=None, max_distance=5
 
     # Remove invalid records, if any.
     if len(invalid_demand_nodes) > 0:
+        logger.info("Removing %d invalid demand records.", len(invalid_demand_nodes))
         demands_gdf = demands_gdf.drop(demands_gdf.index[invalid_demand_nodes]).reset_index(drop=True)
         demand_coords = np.delete(demand_coords, invalid_demand_nodes, axis=0)
         demand_nodes_array = np.delete(demand_nodes_array, invalid_demand_nodes)
 
     if len(invalid_ubs_nodes) > 0:
+        logger.info("Removing %d invalid opportunity records.", len(invalid_ubs_nodes))
         ubs_gdf = ubs_gdf.drop(ubs_gdf.index[invalid_ubs_nodes]).reset_index(drop=True)
         ubs_coords = np.delete(ubs_coords, invalid_ubs_nodes, axis=0)
         ubs_nodes_array = np.delete(ubs_nodes_array, invalid_ubs_nodes)
@@ -230,10 +240,12 @@ def compute_distance_matrix(demands_gdf, ubs_gdf, city_name=None, max_distance=5
     ubs_nodes = pd.Series(ubs_nodes_array, index=ubs_gdf.index)
 
     # Pre-calculate distances up to max_distance.
+    logger.info("Precomputing distances up to %d meters in Pandana Network.", max_distance)
     network.precompute(max_distance)
 
     num_demands = len(demand_nodes)
     num_ubs = len(ubs_nodes)
+    logger.info("Calculating shortest paths for %d demands vs %d opportunities...", num_demands, num_ubs)
     distances = np.empty((num_demands, num_ubs), dtype=np.float32)
 
     def compute_row(i):
@@ -251,8 +263,10 @@ def compute_distance_matrix(demands_gdf, ubs_gdf, city_name=None, max_distance=5
     # Replace infinities with NaN.
     distances[np.isinf(distances)] = np.nan
     distance_df = pd.DataFrame(distances, index=demands_gdf.index, columns=ubs_gdf.index)
+    logger.info("Distance matrix computed with shape: %s", distance_df.shape)
 
     # Infer the ID columns.
+    logger.info("Inferring ID columns for demands and opportunities.")
     col_demand_id = infer_column(demands_gdf, settings.DEMAND_ID_POSSIBLE_COLUMNS)
     col_name = infer_column(ubs_gdf, settings.NAME_POSSIBLE_COLUMNS)
 
@@ -262,4 +276,5 @@ def compute_distance_matrix(demands_gdf, ubs_gdf, city_name=None, max_distance=5
     distance_df.index = demands_ids
     distance_df.columns = ubs_names
 
+    logger.info("compute_distance_matrix completed successfully.")
     return distance_df, network, graph, nodes, edges, demand_nodes, ubs_nodes

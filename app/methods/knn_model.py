@@ -14,6 +14,7 @@ def allocate_demands_knn(
     col_demand_id,
     col_name,
     col_city,
+    col_state,  
     k=1,
     method="geodesic",
     city_name=None,
@@ -50,7 +51,7 @@ def allocate_demands_knn(
 
     # Join with geometry data
     logger.info("Joining KNN results with original GeoDataFrames.")
-    result_df = join_knn_with_geometries(knn_df, demands_gdf, opportunities_gdf, col_demand_id, col_name)
+    result_df = join_knn_with_geometries(knn_df, demands_gdf, opportunities_gdf, col_demand_id, col_name, col_city, col_state)
     logger.info("Geometry join complete. Rows in result_df: %d", len(result_df))
 
     # Some aggregated stats
@@ -60,6 +61,22 @@ def allocate_demands_knn(
         distance_variance=lambda x: x.var(ddof=0)
     ).reset_index()
     result_df = result_df.merge(stats, on='opportunity_name', how='left')
+
+    # Reordenar as colunas conforme a ordem desejada
+    desired_order = [
+        'demand_id',
+        'Destination_State',
+        'Destination_City',
+        'opportunity_name',
+        'Origin_Lat',
+        'Origin_Lon',
+        'Destination_Lat',
+        'Destination_Lon',
+        'distance_km',
+        'distance_mean',
+        'distance_variance'
+    ]
+    result_df = result_df[desired_order]
 
     logger.info("allocate_demands_knn completed successfully.")
     return result_df

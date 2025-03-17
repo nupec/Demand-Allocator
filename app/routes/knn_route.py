@@ -40,7 +40,7 @@ def allocate_demands_knn_api(
 
     # Step 3: Prepare the GeoDataFrames and related columns
     logger.info("Calling prepare_data to read input files and infer relevant columns.")
-    error, demands_gdf, opportunities_gdf, col_demand_id, col_name, col_city = prepare_data(
+    error, demands_gdf, opportunities_gdf, col_demand_id, col_name, col_city, col_state_opportunities, col_state_demand = prepare_data(
         opportunities_file, demands_file, state, city
     )
     if error:
@@ -56,10 +56,11 @@ def allocate_demands_knn_api(
             col_demand_id,
             col_name,
             col_city,
+            col_state_opportunities,  # passando a coluna de estado para oportunidades
             k=k,
             method=method,
             city_name=city,
-            num_threads=1  # Set to 1
+            num_threads=1
         )
         logger.info("Allocation completed successfully. Number of rows in result: %d", len(result_df))
     except ValueError as ve:

@@ -42,4 +42,4 @@ def prepare_data(opportunities_file, demands_file, state=None, city=None):
         demands_gdf = demands_gdf[demands_gdf['NM_MUN'].apply(lambda x: unidecode(x.lower())) == city]
 
     logger.info("prepare_data completed successfully.")
-    return None, demands_gdf, opportunities_gdf, col_demand_id, col_name, col_city
+    return None, demands_gdf, opportunities_gdf, col_demand_id, col_name, col_city, col_state_opportunities, col_state_demand

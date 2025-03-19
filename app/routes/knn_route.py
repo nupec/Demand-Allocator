@@ -35,7 +35,6 @@ class OutputFormatEnum(str, Enum):
     geojson = "geojson"
     json = "json"
 
-# Novo parâmetro para EDA
 @router.post("/allocate_demands_knn/")
 def allocate_demands_knn_api(
     opportunities_file: UploadFile,

@@ -8,6 +8,7 @@ from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from reportlab.lib.utils import ImageReader
 from app.config import settings
+from unidecode import unidecode
 
 logger = logging.getLogger(__name__)
 
@@ -16,13 +17,15 @@ INTERVALO_MAX = 0.5  # 1 UBS para cada 2000 pessoas => 0.5/1000
 INTERVALO_MIN = 0.29 # 1 UBS para cada ~3500 pessoas => ~0.29/1000
 
 def find_column(possible_columns, df):
-    logger.info("Procurando coluna dentre: %s", possible_columns)
-    col = next((col for col in possible_columns if col in df.columns), None)
-    if col:
-        logger.info("Coluna '%s' encontrada.", col)
-    else:
-        logger.warning("Nenhuma coluna encontrada dentre: %s", possible_columns)
-    return col
+    normalized_cols = {unidecode(c).lower(): c for c in df.columns}
+    for candidate in possible_columns:
+        cand_norm = unidecode(candidate).lower()
+        if cand_norm in normalized_cols:
+            real_name = normalized_cols[cand_norm]
+            logger.info("Coluna '%s' encontrada.", real_name)
+            return real_name
+    logger.warning("Nenhuma coluna encontrada dentre: %s", possible_columns)
+    return None
 
 def analyze_knn_allocation(knn_df, demands_gdf, opportunities_gdf, settings):
     """

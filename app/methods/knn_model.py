@@ -1,6 +1,8 @@
 import logging
 import pandas as pd
+import os
 from fastapi import HTTPException
+
 
 from app.methods.geodesic_distance import geodesic_distance_matrix
 from app.methods.pandana_distance import pandana_distance_matrix
@@ -18,12 +20,14 @@ def allocate_demands_knn(
     k=1,
     method="geodesic",
     city_name=None,
-    num_threads=1
+    num_threads: int = 1
 ):
     """
     Allocates demands using K-nearest neighbors (KNN).
     """
-    logger.info("Starting allocate_demands_knn with method='%s', k=%d, city_name=%s", method, k, city_name)
+    if num_threads < 1:
+        num_threads = os.cpu_count()
+    logger.info("Starting allocate_demands_knn with method='%s', k=%d, city_name=%s, num_threads=%d", method, k, city_name, num_threads)
 
     if method == "geodesic":
         logger.info("Using geodesic distance matrix.")

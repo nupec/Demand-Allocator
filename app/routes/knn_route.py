@@ -7,6 +7,7 @@ import unicodedata
 import logging
 import zipfile
 
+
 from fastapi import APIRouter, UploadFile, File, Query, HTTPException
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from enum import Enum
@@ -19,6 +20,9 @@ from app.routes.eda_allocation_route import (
     create_coverage_stats,
     create_distance_hist,
     generate_allocation_pdf,
+    create_distance_boxplot,
+    save_summary_table_image,
+    create_summary_table
 )
 
 logger = logging.getLogger(__name__)
@@ -39,6 +43,7 @@ class OutputFormatEnum(str, Enum):
 def allocate_demands_knn_api(
     opportunities_file: UploadFile,
     demands_file: UploadFile,
+    num_threads: int = Query(0, description="Número de threads (0 = todos os núcleos)"),
     state: str = Query("", description="State (optional)"),
     city: str = Query("", description="City (optional)"),
     # Parâmetro para lista de cidades (JSON array) – opcional
@@ -51,8 +56,10 @@ def allocate_demands_knn_api(
     """
     Rota que permite alocar demandas usando KNN.
     - Se 'cities' (JSON array) for fornecido, faz alocação multi-cidade.
-    - Se o parâmetro 'eda' for true, além do arquivo de alocação, gera a análise EDA e empacota ambos os resultados num ZIP.
+    - Se o parâmetro 'eda' for true, além do arquivo de alocação, gera a análise EDA e empacota ambos os resultados num ZIp.
     """
+    threads = num_threads if num_threads > 0 else os.cpu_count()
+    
     logger.info("Received request to allocate demands using KNN.")
     logger.info("Parameters: state=%s, city=%s, cities=%s, k=%d, method=%s, output_format=%s, eda=%s",
                 state, city, cities, k, method, output_format, eda)
@@ -112,7 +119,7 @@ def allocate_demands_knn_api(
                 k=k,
                 method=method,
                 city_name=city_name,
-                num_threads=1
+                num_threads=threads
             )
             partial_df["city_allocated"] = city_name
             results_df_list.append(partial_df)
@@ -137,7 +144,7 @@ def allocate_demands_knn_api(
             k=k,
             method=method,
             city_name=city,
-            num_threads=1
+            num_threads=threads
         )
 
     logger.info("Allocation completed successfully. Number of rows in result: %d", len(result_df))
@@ -157,8 +164,14 @@ def allocate_demands_knn_api(
         coverage_stats = create_coverage_stats(merged_df)
         # Gera histograma de distâncias
         distance_hist_buf = create_distance_hist(merged_df)
+
+        resumo = create_summary_table(summary)
+        table_image = save_summary_table_image(resumo)
+
+        #Gera box plot
+        box_plot = create_distance_boxplot(merged_df)
         # Gera o relatório PDF
-        pdf_buf = generate_allocation_pdf(summary)
+        pdf_buf = generate_allocation_pdf(summary, merged_df)
 
         # Empacota tudo em um arquivo ZIP
         zip_buffer = io.BytesIO()
@@ -175,6 +188,9 @@ def allocate_demands_knn_api(
             # Gráficos
             zipf.writestr("chart_population.png", chart1_buf.getvalue())
             zipf.writestr("chart_racial.png", chart2_buf.getvalue())
+            
+            zipf.writestr("Table_resumo.png", table_image.getvalue())
+            
             # Relatório PDF
             zipf.writestr("report.pdf", pdf_buf.getvalue())
             # Se houver, estatísticas de cobertura
@@ -183,6 +199,9 @@ def allocate_demands_knn_api(
             # Se houver, histograma de distâncias
             if distance_hist_buf:
                 zipf.writestr("distance_hist.png", distance_hist_buf.getvalue())
+
+            if box_plot:
+                zipf.writestr("Box_plot.png", box_plot.getvalue())    
         zip_buffer.seek(0)
         logger.info("EDA analysis generated successfully. Returning ZIP file.")
         return StreamingResponse(

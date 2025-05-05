@@ -74,3 +74,5 @@ coverage.xml
 
 # MacOS files
 .DS_Store
+
+*.geojson

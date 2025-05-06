@@ -1,38 +1,45 @@
+import logging
 import geopandas as gpd
+from unidecode import unidecode
+
 from app.preprocessing.geoprocessing import process_geometries
 from app.preprocessing.utils import infer_column
-from unidecode import unidecode
 from app.config import settings
 
+logger = logging.getLogger(__name__)
+
 def prepare_data(opportunities_file, demands_file, state=None, city=None):
+    logger.info("Reading GeoDataFrames from uploaded files.")
     opportunities_gdf = gpd.read_file(opportunities_file.file)
     demands_gdf = gpd.read_file(demands_file.file)
 
-    # Process centroids if necessary
+    logger.info("Calling process_geometries on both GDFs.")
     opportunities_gdf = process_geometries(opportunities_gdf)
     demands_gdf = process_geometries(demands_gdf)
 
-    # Infer column names
+    logger.info("Inferring column names for demands and opportunities.")
     col_demand_id = infer_column(demands_gdf, settings.DEMAND_ID_POSSIBLE_COLUMNS)
     col_name = infer_column(opportunities_gdf, settings.NAME_POSSIBLE_COLUMNS)
     col_city = infer_column(opportunities_gdf, settings.CITY_POSSIBLE_COLUMNS)
     col_state_opportunities = infer_column(opportunities_gdf, settings.STATE_POSSIBLE_COLUMNS)
     col_state_demand = infer_column(demands_gdf, settings.STATE_POSSIBLE_COLUMNS)
 
-    # Check if all necessary columns were inferred
     if not col_demand_id or not col_name or not col_city or not col_state_opportunities or not col_state_demand:
-        return {"error": "Could not infer all necessary columns. Please check the input data."}, None, None, None, None, None  # Adicionamos um None extra aqui
+        logger.error("Could not infer all necessary columns. Check the input data.")
+        return {"error": "Could not infer all necessary columns. Please check the input data."}, None, None, None, None, None
 
-    # Filter opportunities by state (if provided) and city
     if state:
+        logger.info("Filtering by state='%s'.", state)
         opportunities_gdf = opportunities_gdf[opportunities_gdf[col_state_opportunities] == state]
         demands_gdf = demands_gdf[demands_gdf[col_state_demand] == state]
     else:
-        print("No state provided, allocating demands to the entire region.")
+        logger.info("No state provided. Using entire dataset for allocation.")
 
     if city:
+        logger.info("Filtering by city='%s'.", city)
         city = unidecode(city.lower())
         opportunities_gdf = opportunities_gdf[opportunities_gdf[col_city].apply(lambda x: unidecode(x.lower())) == city]
         demands_gdf = demands_gdf[demands_gdf['NM_MUN'].apply(lambda x: unidecode(x.lower())) == city]
 
-    return None, demands_gdf, opportunities_gdf, col_demand_id, col_name, col_city
+    logger.info("prepare_data completed successfully.")
+    return None, demands_gdf, opportunities_gdf, col_demand_id, col_name, col_city, col_state_opportunities, col_state_demand

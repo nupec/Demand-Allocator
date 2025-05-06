@@ -1,26 +1,26 @@
+import logging
 import geopandas as gpd
 
+logger = logging.getLogger(__name__)
+
 def process_geometries(gdf):
-    # Print the geometry type for debugging
-    print("Geometries in the DataFrame: ", gdf.geometry.geom_type.value_counts())
-    
-    # Check if there are Polygons or MultiPolygons
+    logger.info("Processing geometries. Checking geometry types...")
+    geom_types = gdf.geometry.geom_type.value_counts()
+    logger.debug("Geometry types found: %s", geom_types.to_dict())
+
     if gdf.geometry.geom_type.isin(['Polygon', 'MultiPolygon']).any():
-        print("Calculating centroids for geometries...")
-
-        # Check if CRS is defined, if not, set it to WGS84
+        logger.info("Some geometries are polygons/multipolygons. Calculating centroids...")
         if gdf.crs is None:
+            logger.warning("No CRS set. Setting to WGS84 (EPSG:4326).")
             gdf.set_crs(epsg=4326, inplace=True)
-            print("CRS was not set, setting it to WGS84 (EPSG:4326)")
 
-        # Convert to a projected coordinate system (3857) to correctly calculate centroids
+        # Convert to projected coordinate system
         gdf = gdf.to_crs(epsg=3857)
         gdf['geometry'] = gdf.centroid
-        # Convert back to WGS84 (EPSG:4326)
+        # Convert back to WGS84
         gdf = gdf.to_crs(epsg=4326)
-
-        print("Centroids calculated and CRS converted back to WGS84.")
+        logger.info("Centroids calculated and CRS reprojected back to EPSG:4326.")
     else:
-        print("No centroid calculation needed.")
-    
+        logger.info("No polygon geometries found; skipping centroid calculation.")
+
     return gdf

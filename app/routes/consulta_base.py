@@ -1,19 +1,3 @@
-"""
-Rota /consulta_base – alocação KNN + geração de artefatos (EDA) + configuração KeplerGL
-------------------------------------------------------------------------------------
-• Produz o **mesmo ZIP** da rota /api/eda/allocation, mas de forma automática, a partir
-  de um estado/município escolhidos na interface.
-• Se a variável de ambiente FRONTEND_UPLOAD_URL estiver definida:
-      – gera CSV + JSON em diretório temporário
-      – envia via POST /api/upload_map ao frontend
-      – remove os arquivos temporários do backend
-  Caso contrário (modo legado):
-      – grava CSV/JSON em  *frontend/data/temp*  e  *frontend/config/temp*
-      – atualiza frontend/config/temp/config.json.
-
-OBS: nada em diretórios “permanentes” é tocado.
-"""
-
 from __future__ import annotations
 
 import json

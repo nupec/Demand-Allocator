@@ -42,17 +42,20 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/consulta_base")
 
 BACK_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-FRONT_ROOT = os.path.abspath(os.path.join(BACK_ROOT, "..", "frontend"))
 
 DEMANDS_PATH       = os.path.join(BACK_ROOT, "data", "demands.geojson")
 OPPORTUNITIES_PATH = os.path.join(BACK_ROOT, "data", "opportunities.geojson")
 
-FRONT_DATA_DIR   = os.path.join(FRONT_ROOT, "data",   "temp")
-FRONT_CONFIG_DIR = os.path.join(FRONT_ROOT, "config", "temp")
-os.makedirs(FRONT_DATA_DIR,   exist_ok=True)
-os.makedirs(FRONT_CONFIG_DIR, exist_ok=True)
+# --- ATUALIZAÇÃO PARA DOCKER ---
+# Aponta para o diretório compartilhado via volume do Docker.
+SHARED_DIR = "/shared"
+os.makedirs(SHARED_DIR, exist_ok=True)
 
-FRONTEND_UPLOAD_URL = os.getenv("FRONTEND_UPLOAD_URL")  # se ausente → modo legado
+# Os diretórios agora são o mesmo caminho compartilhado.
+FRONT_DATA_DIR   = SHARED_DIR
+FRONT_CONFIG_DIR = SHARED_DIR
+
+FRONTEND_UPLOAD_URL = os.getenv("FRONTEND_UPLOAD_URL")
 
 # ------------------------------------------------------------------ #
 #  Cache de ZIPs (TTL simples)                                       #
@@ -238,7 +241,7 @@ def _upload_to_frontend(map_id: str, csv_path: str, cfg_path: str) -> str | None
         logger.info("Upload concluído – link recebido: %s", link)
         return link
     except Exception as e:
-        logger.error("Falha no upload: %s", e)
+        logger.error("Falha no upload: %s", e, exc_info=True)
         return None
 
 
@@ -255,33 +258,19 @@ except Exception as e:
 @router.get("/ufs")
 def get_ufs():
     if DEMANDS_GDF.empty:
-        return JSONResponse(500, {"error": "demands.geojson não carregado"})
+        # CORREÇÃO: Argumentos de JSONResponse na ordem correta
+        return JSONResponse(status_code=500, content={"error": "demands.geojson não carregado"})
     return sorted(DEMANDS_GDF["UF"].dropna().unique().tolist())
 
 
 @router.get("/municipios")
 def get_municipios(uf: str = Query("")):
     if DEMANDS_GDF.empty:
-        return JSONResponse(500, {"error": "demands.geojson não carregado"})
+        # CORREÇÃO: Argumentos de JSONResponse na ordem correta
+        return JSONResponse(status_code=500, content={"error": "demands.geojson não carregado"})
     cidades = DEMANDS_GDF.loc[DEMANDS_GDF["UF"] == uf, "NM_MUN"] if uf else DEMANDS_GDF["NM_MUN"]
     return sorted(cidades.dropna().unique().tolist())
 
-
-# ------------------------------------------------------------------ #
-#  Limpa pastas temp (modo legado)                                    #
-# ------------------------------------------------------------------ #
-def _limpar_temp():
-    shutil.rmtree(FRONT_DATA_DIR,   ignore_errors=True)
-    shutil.rmtree(FRONT_CONFIG_DIR, ignore_errors=True)
-    os.makedirs(FRONT_DATA_DIR,   exist_ok=True)
-    os.makedirs(FRONT_CONFIG_DIR, exist_ok=True)
-    with open(
-        os.path.join(FRONT_CONFIG_DIR, "config.json"), "w", encoding="utf-8"
-    ) as f:
-        json.dump({"siteTitle": "VisKepler", "websiteTitle": "My SisKepler App", "maps": []}, f)
-
-
-_limpar_temp()
 
 # ------------------------------------------------------------------ #
 #  Rota principal                                                     #
@@ -300,9 +289,11 @@ def consulta_completa(uf: str, municipio: str, tipo: str = Query("geodesic")):
                 _Buf(opp_f), _Buf(dem_f), state=uf, city=municipio
             )
         if err:
-            return JSONResponse(500, {"erro": err})
+            # CORREÇÃO: Argumentos de JSONResponse na ordem correta
+            return JSONResponse(status_code=500, content={"erro": err})
         if demands_gdf.empty or opps_gdf.empty:
-            return JSONResponse(404, {"erro": "Sem dados suficientes"})
+            # CORREÇÃO: Argumentos de JSONResponse na ordem correta
+            return JSONResponse(status_code=404, content={"erro": "Sem dados suficientes para a localidade."})
 
         # ---------- 2. KNN + resumo ----------
         df_knn = allocate_demands_knn(
@@ -347,7 +338,7 @@ def consulta_completa(uf: str, municipio: str, tipo: str = Query("geodesic")):
         _clean_zip_cache()
         ZIP_CACHE[cache_key] = (datetime.utcnow(), zip_buffer.getvalue())
 
-        # ---------- 5. gera CSV + JSON ----------
+        # ---------- 5. gera CSV + JSON para o mapa ----------
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         map_id    = f"knn_{timestamp}"
         csv_file  = f"{map_id}.csv"
@@ -374,37 +365,24 @@ def consulta_completa(uf: str, municipio: str, tipo: str = Query("geodesic")):
         map_link = _upload_to_frontend(map_id, csv_path, cfg_path)
 
         if map_link:
-            # limpeza de arquivos temporários
+            # limpeza de arquivos temporários do sistema
             try:
-                os.remove(csv_path)
-                os.remove(cfg_path)
-                os.rmdir(tmpdir)
-            except OSError:
-                pass
+                shutil.rmtree(tmpdir)
+            except OSError as e:
+                logger.warning(f"Não foi possível remover o diretório temporário {tmpdir}: {e}")
         else:
-            # grava nas pastas do front‑end
+            # Modo legado: grava nas pastas do volume compartilhado
+            logger.info(f"Modo legado: movendo arquivos para o diretório compartilhado: {SHARED_DIR}")
             shutil.move(csv_path, os.path.join(FRONT_DATA_DIR, csv_file))
             shutil.move(cfg_path, os.path.join(FRONT_CONFIG_DIR, cfg_file))
-
-            # atualiza config.json (frontend/config/temp)
-            cfg_json = os.path.join(FRONT_CONFIG_DIR, "config.json")
+            
+            # Limpa o diretório temporário local, pois os arquivos foram movidos
             try:
-                with open(cfg_json, "r", encoding="utf-8") as f:
-                    cfg_front = json.load(f)
-            except Exception:
-                cfg_front = {"siteTitle": "VisKepler", "maps": []}
+                os.rmdir(tmpdir)
+            except OSError as e:
+                logger.warning(f"Não foi possível remover o diretório temporário vazio {tmpdir}: {e}")
 
-            if not any(m["link"] == f"/map/{map_id}" for m in cfg_front["maps"]):
-                cfg_front["maps"].append({
-                    "data_ids": {"csv_file": csv_file},
-                    "label": kepler_cfg["label"],
-                    "link":  f"/map/{map_id}",
-                    "description": f"Fluxo Demanda → UBS ({tipo}) gerado em {timestamp}"
-                })
-                with open(cfg_json, "w", encoding="utf-8") as f:
-                    json.dump(cfg_front, f, ensure_ascii=False, indent=2)
-
-            map_link = f"/map/{map_id}"   # fallback
+            map_link = f"/map/{map_id}"   # fallback link para o frontend
 
         # ---------- 7. resposta ----------
         return {
@@ -417,7 +395,8 @@ def consulta_completa(uf: str, municipio: str, tipo: str = Query("geodesic")):
 
     except Exception as e:
         logger.exception("Erro inesperado em /consulta_base/resultado_completo")
-        return JSONResponse(500, {"erro": str(e)})
+        # CORREÇÃO: Argumentos de JSONResponse na ordem correta
+        return JSONResponse(status_code=500, content={"erro": str(e)})
 
 
 # ------------------------------------------------------------------ #
@@ -428,7 +407,8 @@ def download_zip(uf: str, municipio: str, tipo: str = "geodesic"):
     cache_key = f"{uf}_{municipio}_{tipo}"
     cached = ZIP_CACHE.get(cache_key)
     if not cached:
-        return JSONResponse(404, {"erro": "ZIP não disponível. Execute a consulta primeiro."})
+        # CORREÇÃO: Argumentos de JSONResponse na ordem correta
+        return JSONResponse(status_code=404, content={"erro": "ZIP não disponível. Execute a consulta primeiro."})
 
     _clean_zip_cache()
     _, zip_bytes = cached
